@@ -12,3 +12,6 @@ env/
 # Large archives & temporary downloads
 niarrikues.zip
 HASIL_DOWNLOAD_TTE/*.pdf
+Sertifikat_MGMP.pdf
+SERTIFIKAT_KBC/
+split_sertifikat.py
