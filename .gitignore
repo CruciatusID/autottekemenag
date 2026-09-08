@@ -1,0 +1,14 @@
+# Python & Playwright Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.playwright/
+
+# Virtual Environment
+venv/
+env/
+.env
+
+# Large archives & temporary downloads
+niarrikues.zip
+HASIL_DOWNLOAD_TTE/*.pdf
