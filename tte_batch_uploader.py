@@ -21,6 +21,16 @@ DEFAULT_SIGNERS = [
 ]
 DEFAULT_JENIS_DOKUMEN = "Dokumen Lain-Lain"
 
+def format_duration(seconds: float) -> str:
+    mins, secs = divmod(int(seconds), 60)
+    hours, mins = divmod(mins, 60)
+    if hours > 0:
+        return f"{hours} jam {mins} menit {secs} detik"
+    elif mins > 0:
+        return f"{mins} menit {secs} detik"
+    else:
+        return f"{seconds:.1f} detik"
+
 def load_history():
     if HISTORY_FILE.exists():
         try:
@@ -263,8 +273,10 @@ def run_batch_uploader():
         # 4. Loop Unggah Setiap File
         success_count = 0
         failed_count = 0
+        total_start_time = time.time()
 
         for idx, item in enumerate(pending_files, 1):
+            file_start_time = time.time()
             filename = item["filename"]
             filepath = item["path"]
             perihal = item["perihal"]
@@ -416,8 +428,9 @@ def run_batch_uploader():
                     history.append(history_entry)
                     save_history(history)
 
+                file_elapsed = time.time() - file_start_time
                 success_count += 1
-                print(f"   ✅ Berhasil diunggah dan diverifikasi! [{folder}]")
+                print(f"   ✅ Berhasil diunggah dan diverifikasi! [{folder}] (⏱️ {format_duration(file_elapsed)})")
 
             except PlaywrightTimeoutError as te:
                 print(f"   ❌ Gagal (Timeout): {te}")
@@ -428,11 +441,17 @@ def run_batch_uploader():
                 failed_count += 1
                 time.sleep(2)
 
+        total_elapsed = time.time() - total_start_time
+        avg_speed = total_elapsed / len(pending_files) if pending_files else 0
+
         print("\n" + "=" * 60)
         print(f"🏁 PROSES SELESAI!")
-        print(f"   - Berhasil: {success_count} file")
-        print(f"   - Gagal   : {failed_count} file")
-        print(f"   - Total Selesai di Histori: {len(history)} file")
+        print(f"   - Berhasil           : {success_count} file")
+        print(f"   - Gagal              : {failed_count} file")
+        print(f"   - Total di Histori   : {len(history)} file")
+        print(f"   - ⏱️ Total Waktu     : {format_duration(total_elapsed)}")
+        if success_count > 0:
+            print(f"   - ⚡ Rata-rata/File  : {avg_speed:.1f} detik/file")
         print("=" * 60)
 
         context.close()

@@ -18,6 +18,16 @@ HISTORY_DOWNLOAD_FILE = BASE_DIR / "download_history.json"
 
 DEFAULT_EMAIL = "198906212022031002@kemenag.go.id"
 
+def format_duration(seconds: float) -> str:
+    mins, secs = divmod(int(seconds), 60)
+    hours, mins = divmod(mins, 60)
+    if hours > 0:
+        return f"{hours} jam {mins} menit {secs} detik"
+    elif mins > 0:
+        return f"{mins} menit {secs} detik"
+    else:
+        return f"{seconds:.1f} detik"
+
 def load_config():
     if CONFIG_FILE.exists():
         try:
@@ -226,10 +236,12 @@ def run_batch_downloader():
 
         success_download_count = 0
         waiting_sign_count = 0
+        total_start_time = time.time()
 
         search_input = page.locator("input[type='search']").first
 
         for idx, item in enumerate(pending_download, 1):
+            file_start_time = time.time()
             filename = item["filename"]
             perihal = item["perihal"]
             kategori = item["kategori"]
@@ -284,6 +296,7 @@ def run_batch_downloader():
                         downloaded = True
 
                     if downloaded:
+                        file_elapsed = time.time() - file_start_time
                         success_download_count += 1
                         history_entry = {
                             "filename": filename,
@@ -294,7 +307,8 @@ def run_batch_downloader():
                         download_history.append(history_entry)
                         downloaded_filenames.add(filename)
                         save_download_history(download_history)
-                        print(f"   ✅ Berhasil disimpan ke: HASIL_DOWNLOAD_TTE/{kategori}/{filename}")
+                        dest_info = f"{kategori}/{filename}" if use_subfolders else filename
+                        print(f"   ✅ Berhasil disimpan: {dest_info} (⏱️ {format_duration(file_elapsed)})")
                 else:
                     waiting_sign_count += 1
                     status_col = matched_row.locator("td").nth(4).inner_text().strip() if matched_row.locator("td").count() >= 5 else "Dalam Proses"
@@ -304,11 +318,17 @@ def run_batch_downloader():
                 print(f"   ❌ Gagal memproses baris ini: {ex}")
                 time.sleep(1)
 
+        total_elapsed = time.time() - total_start_time
+        avg_speed = total_elapsed / len(pending_download) if pending_download else 0
+
         print("\n" + "=" * 60)
         print("🏁 REKAP PENGECEKAN & DOWNLOAD:")
         print(f"   - Berhasil Diunduh (Baru) : {success_download_count} file")
         print(f"   - Masih Menunggu TTE      : {waiting_sign_count} file")
         print(f"   - Total File di Histori   : {len(download_history)} file")
+        print(f"   - ⏱️ Total Waktu Proses   : {format_duration(total_elapsed)}")
+        if len(pending_download) > 0:
+            print(f"   - ⚡ Rata-rata/Dokumen    : {avg_speed:.1f} detik/file")
         print(f"   - Lokasi Penyimpanan      : {DOWNLOAD_DIR.resolve()}")
         print("=" * 60)
 
