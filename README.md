@@ -95,15 +95,12 @@ Anda juga dapat mengatur default akun dan pejabat secara manual di file `config.
   "penandatangan": [
     {
       "nama": "Usman Senong",
-      "anchor": "^"
-    },
-    {
-      "nama": "Pejabat Kedua",
-      "anchor": "#"
+      "anchor": ["#", "$"]
     }
   ]
 }
 ```
+> *Catatan: Satu penandatangan bisa memiliki lebih dari 1 anchor sekaligus (misal `["#", "$"]` atau `"#,$"`). Bot akan otomatis mencentang semua anchor tersebut dalam satu kali klik di portal TTE.*
 
 ---
 

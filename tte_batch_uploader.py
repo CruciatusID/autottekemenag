@@ -21,6 +21,58 @@ DEFAULT_SIGNERS = [
 ]
 DEFAULT_JENIS_DOKUMEN = "Dokumen Lain-Lain"
 
+def extract_anchors(anchor_input) -> list:
+    """Ekstrak list anchor valid [^, #, $, *] dari input string, list, atau gabungan."""
+    valid_symbols = ["^", "#", "$", "*"]
+    if isinstance(anchor_input, list):
+        res = []
+        for a in anchor_input:
+            for sub_a in extract_anchors(a):
+                if sub_a not in res:
+                    res.append(sub_a)
+        return res if res else ["^"]
+    elif isinstance(anchor_input, str):
+        found = [ch for ch in anchor_input if ch in valid_symbols]
+        return found if found else ["^"]
+    return ["^"]
+
+def normalize_signers(signers_raw: list) -> list:
+    """
+    Menggabungkan penandatangan dengan nama yang sama (case-insensitive)
+    sehingga 1 penandatangan dapat memiliki multi-anchor sekaligus tanpa duplikasi baris di web.
+    """
+    grouped = {}
+    for item in signers_raw:
+        if isinstance(item, dict):
+            name = item.get("nama", "").strip()
+            anchor_val = item.get("anchor", item.get("anchors", "^"))
+        elif isinstance(item, str):
+            name = item.strip()
+            anchor_val = "^"
+        else:
+            continue
+        
+        if not name:
+            continue
+            
+        key = name.lower()
+        anchors = extract_anchors(anchor_val)
+        if key not in grouped:
+            grouped[key] = {
+                "nama": name,
+                "anchors": []
+            }
+        for a in anchors:
+            if a not in grouped[key]["anchors"]:
+                grouped[key]["anchors"].append(a)
+                
+    result = []
+    for g in grouped.values():
+        if not g["anchors"]:
+            g["anchors"] = ["^"]
+        result.append(g)
+    return result
+
 def format_duration(seconds: float) -> str:
     mins, secs = divmod(int(seconds), 60)
     hours, mins = divmod(mins, 60)
@@ -177,9 +229,9 @@ def run_batch_uploader():
 
     signers_cfg = config.get("penandatangan")
     if isinstance(signers_cfg, list) and len(signers_cfg) > 0:
-        signers = signers_cfg[:4] # Maksimal 4 penandatangan
+        signers = normalize_signers(signers_cfg)[:4] # Maksimal 4 penandatangan
     else:
-        signers = DEFAULT_SIGNERS
+        signers = normalize_signers(DEFAULT_SIGNERS)
 
     print("\n[?] KONFIRMASI AKUN & PEJABAT:")
     # Konfirmasi / Ubah Email Akun
@@ -193,33 +245,37 @@ def run_batch_uploader():
         pemaraf_name = input_pemaraf
 
     # Konfirmasi / Ubah Penandatangan
-    signers_display = ", ".join([f"{s.get('nama')} ({s.get('anchor', '^')})" for s in signers])
+    signers_display = ", ".join([f"{s.get('nama')} (Anchor: {', '.join(s.get('anchors', ['^']))})" for s in signers])
     print(f"🖋️  Penandatangan saat ini: {signers_display}")
     ubah_signer = input("    Ingin ubah penandatangan? (y/N - Tekan ENTER jika sudah sesuai): ").strip().lower()
     
     if ubah_signer == "y":
-        signers = []
+        signers_raw = []
         anchors_avail = ["^", "#", "$", "*"]
         try:
-            jml = int(input("    Berapa jumlah penandatangan (1-4)? ").strip() or "1")
+            jml = int(input("    Berapa jumlah orang penandatangan (1-4)? ").strip() or "1")
             jml = max(1, min(4, jml))
         except ValueError:
             jml = 1
 
         for i in range(jml):
-            def_anchor = anchors_avail[i]
+            def_anchor = anchors_avail[i] if i < len(anchors_avail) else "^"
             s_name = input(f"    - Nama Penandatangan ke-{i+1}: ").strip()
-            s_anc = input(f"      Anchor [^, #, $, *] (Default: {def_anchor}): ").strip() or def_anchor
+            s_anc = input(f"      Anchor [^, #, $, *] (Bisa lebih dari 1 cth: #, $ | Default: {def_anchor}): ").strip() or def_anchor
             if s_name:
-                signers.append({"nama": s_name, "anchor": s_anc})
+                signers_raw.append({"nama": s_name, "anchor": s_anc})
 
+        signers = normalize_signers(signers_raw)
         if not signers:
-            signers = DEFAULT_SIGNERS
+            signers = normalize_signers(DEFAULT_SIGNERS)
 
     # Simpan kembali ke config.json jika ada perubahan
     config["email"] = email
     config["pemaraf"] = {"nama": pemaraf_name}
-    config["penandatangan"] = signers
+    config["penandatangan"] = [
+        {"nama": s["nama"], "anchor": s["anchors"] if len(s["anchors"]) > 1 else s["anchors"][0]}
+        for s in signers
+    ]
     config["jenis_dokumen"] = jenis_dokumen
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
@@ -230,7 +286,8 @@ def run_batch_uploader():
     print(f"✍️  Pemaraf          : {pemaraf_name}")
     print(f"🖋️  Penandatangan ({len(signers)} Orang):")
     for s_idx, s in enumerate(signers, 1):
-        print(f"    {s_idx}. {s.get('nama')} [Anchor: {s.get('anchor', '^')}]")
+        anc_str = ", ".join(s.get("anchors", ["^"]))
+        print(f"    {s_idx}. {s.get('nama')} [Anchor: {anc_str}]")
     print("-" * 60)
 
     if not password:
@@ -341,12 +398,15 @@ def run_batch_uploader():
                 page.wait_for_url("**/create_step_three**", timeout=15000)
                 time.sleep(1)
 
-                # 7. Tahap 3: Tambah Penandatangan (1 s.d. 4 Orang dengan Anchor ^, &, #, *)
+                # 7. Tahap 3: Tambah Penandatangan (Dukungan Multi-Anchor per Penandatangan)
                 for s_num, signer_obj in enumerate(signers, 1):
                     signer_name = signer_obj.get("nama", "").strip()
-                    anchor_symbol = signer_obj.get("anchor", "^").strip()
+                    anchor_symbols = signer_obj.get("anchors", ["^"])
+                    if isinstance(anchor_symbols, str):
+                        anchor_symbols = extract_anchors(anchor_symbols)
 
-                    print(f"   🔍 [{s_num}/{len(signers)}] Memilih Penandatangan: {signer_name} (Anchor: {anchor_symbol})...")
+                    anc_display = ", ".join(anchor_symbols)
+                    print(f"   🔍 [{s_num}/{len(signers)}] Memilih Penandatangan: {signer_name} (Anchor: {anc_display})...")
                     page.get_by_text("Cari Pegawai").click()
                     time.sleep(0.3)
                     search_box = page.locator("input.select2-search__field").first
@@ -365,21 +425,25 @@ def run_batch_uploader():
 
                     # Set Nilai Anchor via Javascript / Selectpicker
                     try:
-                        page.evaluate(f'''() => {{
-                            const sel = document.getElementById("anchor") || document.querySelector("select[name='anchor[]']");
-                            if (sel) {{
-                                for (let opt of sel.options) {{
-                                    if (opt.value === "{anchor_symbol}" || opt.text.trim() === "{anchor_symbol}") {{
-                                        opt.selected = true;
-                                    }}
-                                }}
-                                sel.dispatchEvent(new Event("change", {{ bubbles: true }}));
-                                if (window.$ && $(sel).selectpicker) {{
-                                    $(sel).selectpicker("val", ["{anchor_symbol}"]);
-                                    $(sel).selectpicker("render");
-                                }}
-                            }}
-                        }}''')
+                        page.evaluate(
+                            """(anchors) => {
+                                const sel = document.getElementById("anchor") || document.querySelector("select[name='anchor[]']") || document.querySelector("select[name='anchor']");
+                                if (sel) {
+                                    for (let opt of sel.options) {
+                                        const val = (opt.value || "").trim();
+                                        const txt = (opt.text || "").trim();
+                                        opt.selected = anchors.includes(val) || anchors.includes(txt);
+                                    }
+                                    sel.dispatchEvent(new Event("change", { bubbles: true }));
+                                    if (window.$ && $(sel).selectpicker) {
+                                        $(sel).selectpicker("val", anchors);
+                                        $(sel).selectpicker("render");
+                                        $(sel).trigger("change");
+                                    }
+                                }
+                            }""",
+                            anchor_symbols
+                        )
                     except Exception:
                         pass
 
@@ -390,19 +454,24 @@ def run_batch_uploader():
                         anchor_btn = page.locator("button[data-id='anchor'], .bootstrap-select button").first
                         if anchor_btn.is_visible():
                             anchor_text = anchor_btn.inner_text().strip()
-                            if anchor_symbol not in anchor_text:
+                            if any(a not in anchor_text for a in anchor_symbols):
                                 anchor_btn.click()
                                 time.sleep(0.4)
-                                item = page.locator(".dropdown-menu.show a, .bootstrap-select .dropdown-menu a").filter(has_text=re.compile(rf"^\s*{re.escape(anchor_symbol)}\s*$")).first
-                                if item.is_visible():
-                                    item.click()
-                                    time.sleep(0.4)
+                                for a in anchor_symbols:
+                                    item = page.locator(".dropdown-menu.show a, .bootstrap-select .dropdown-menu a, .dropdown-menu.show li, .bootstrap-select .dropdown-menu li").filter(has_text=re.compile(rf"^\s*{re.escape(a)}\s*$")).first
+                                    if item.is_visible():
+                                        is_selected = item.evaluate("el => (el.closest('li') ? el.closest('li').classList.contains('selected') : el.classList.contains('selected'))")
+                                        if not is_selected:
+                                            item.click()
+                                            time.sleep(0.3)
+                                page.keyboard.press("Escape")
+                                time.sleep(0.3)
                     except Exception:
                         pass
 
                     time.sleep(0.5)
 
-                    # Klik Tambah Penandatangan
+                    # Klik Tambah Penandatangan (1 kali untuk seluruh anchor orang ini)
                     page.get_by_role("button", name="Tambah Penandatangan").click()
                     time.sleep(2)
                     page.wait_for_load_state("networkidle")

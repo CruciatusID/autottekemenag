@@ -7,11 +7,10 @@
   "penandatangan": [
     {
       "nama": "usman senong",
-      "anchor": "#"
-    },
-    {
-      "nama": "usman senong",
-      "anchor": "$"
+      "anchor": [
+        "#",
+        "$"
+      ]
     }
   ]
 }
