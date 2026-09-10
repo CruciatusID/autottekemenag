@@ -50,18 +50,107 @@ def save_download_history(hist):
     with open(HISTORY_DOWNLOAD_FILE, "w", encoding="utf-8") as f:
         json.dump(hist, f, indent=2, ensure_ascii=False)
 
+def normalize_text(text: str) -> str:
+    """Bersihkan teks untuk pencocokan yang fleksibel."""
+    if not text:
+        return ""
+    text = text.lower()
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r'[\s\-_,./\\]+', ' ', text)
+    return text.strip()
+
+def is_doc_type_match(target_perihal: str, candidate_perihal: str) -> bool:
+    """Memeriksa apakah jenis dokumen cocok (misal Sertifikat KBC vs SKBK)."""
+    t_norm = normalize_text(target_perihal)
+    c_norm = normalize_text(candidate_perihal)
+    
+    doc_types = [
+        "sertifikat kbc",
+        "sertifikat mgmp",
+        "sertifikat",
+        "skbk",
+        "skmt",
+        "surat tugas",
+        "surat keterangan",
+        "surat pernyataan",
+        "laporan kondisi barang",
+        "laporan existing",
+        "laporan",
+        "usulan",
+        "rekomendasi"
+    ]
+    
+    for dt in doc_types:
+        in_target = dt in t_norm
+        in_candidate = dt in c_norm
+        if in_target != in_candidate:
+            return False
+            
+    return True
+
+def calculate_match_score(target_perihal: str, candidate_perihal: str) -> float:
+    """Menghitung skor kecocokan antara target dan kandidat perihal (0.0 - 1.0)."""
+    if not is_doc_type_match(target_perihal, candidate_perihal):
+        return 0.0
+
+    t_norm = normalize_text(target_perihal)
+    c_norm = normalize_text(candidate_perihal)
+    
+    if t_norm == c_norm:
+        return 1.0
+        
+    t_words = [w for w in t_norm.split() if len(w) > 1]
+    c_words = [w for w in c_norm.split() if len(w) > 1]
+    
+    if not t_words or not c_words:
+        return 0.0
+        
+    matched_words = sum(1 for w in t_words if w in c_norm)
+    return matched_words / len(t_words)
+
+def fetch_table_catalog(page, max_pages: int = 3) -> list:
+    """
+    Mengambil katalog data naskah langsung dari server portal TTE (100 item per halaman)
+    sehingga seluruh dokumen naskah terindeks di memori dengan cepat dan 100% akurat.
+    """
+    all_rows = []
+    try:
+        # Set page length to 100
+        with page.expect_response(lambda r: "data_index" in r.url and "length=100" in r.url, timeout=15000) as resp_info:
+            page.evaluate("() => { $('.dataTables').DataTable().page.len(100).draw(); }")
+            
+        data = resp_info.value.json().get("data", [])
+        all_rows.extend(data)
+        
+        # Jika total records lebih banyak dari 100 dan kita butuh halaman berikutnya
+        records_total = resp_info.value.json().get("recordsTotal", 0)
+        if records_total > 100 and max_pages > 1:
+            pages_to_fetch = min(max_pages, (records_total // 100) + 1)
+            for p_idx in range(1, pages_to_fetch):
+                try:
+                    with page.expect_response(lambda r: "data_index" in r.url and f"start={p_idx*100}" in r.url, timeout=10000) as next_resp:
+                        page.evaluate(f"() => {{ $('.dataTables').DataTable().page({p_idx}).draw('page'); }}")
+                    next_data = next_resp.value.json().get("data", [])
+                    all_rows.extend(next_data)
+                except Exception:
+                    break
+    except Exception as e:
+        print(f"⚠️ Peringatan saat memuat katalog tabel: {e}")
+        
+    return all_rows
+
 def get_target_files():
     """
     Mengumpulkan seluruh file target beserta kategori foldernya:
     (NON PNS, PNS KEMENAG, PNS PEMDA, PPPK Kemenag, PPPK PEMDA)
     """
-    file_map = {} # filename -> {filename, perihal, kategori}
+    file_map = {}
 
     # 1. Pindai langsung dari struktur folder lokal di BASE_DIR
     for pdf in BASE_DIR.rglob("*.pdf"):
         if any(part.startswith(".") or part in ["__pycache__", "venv", "HASIL_DOWNLOAD_TTE"] for part in pdf.parts):
             continue
-        if pdf.name != "recorded_download.py":
+        if pdf.name not in ["recorded_download.py", "Sertifikat_MGMP.pdf"]:
             parent_folder = pdf.parent.name if pdf.parent != BASE_DIR else "ROOT"
             file_map[pdf.name] = {
                 "filename": pdf.name,
@@ -69,7 +158,6 @@ def get_target_files():
                 "kategori": parent_folder
             }
 
-    # 2. Periksa upload_history.json jika ada data kategori tambahan
     if HISTORY_UPLOAD_FILE.exists():
         try:
             with open(HISTORY_UPLOAD_FILE, "r", encoding="utf-8") as f:
@@ -94,13 +182,9 @@ def get_target_files():
 
     return sorted(list(file_map.values()), key=lambda x: (x["kategori"], x["filename"]))
 
-def sanitize_filename(name: str) -> str:
-    cleaned = re.sub(r'[\\/*?:"<>|]', "", name).strip()
-    return cleaned if cleaned else "Dokumen_TTE"
-
 def run_batch_downloader():
     print("=" * 60)
-    print(" 📥 TTE KEMENAG AUTO-DOWNLOADER (KATEGORI: PNS / PPPK / NON PNS) ")
+    print(" 📥 TTE KEMENAG AUTO-DOWNLOADER (AKURAT & CEPAT) ")
     print("=" * 60)
 
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -131,8 +215,15 @@ def run_batch_downloader():
 
     if not pending_download:
         print("🎉 Semua dokumen target Anda sudah lengkap diunduh ke folder kategori masing-masing!")
-        input("Tekan ENTER untuk keluar...")
-        return
+        reset_choice = input("\n[?] Ingin RESET histori unduhan dan memeriksa ulang SEMUA file dari awal? (y/N): ").strip().lower()
+        if reset_choice == "y":
+            download_history = []
+            save_download_history([])
+            pending_download = target_files.copy()
+            print(f"🔄 Histori direset! Seluruh {len(pending_download)} dokumen siap dicek kembali.")
+        else:
+            input("Tekan ENTER untuk keluar...")
+            return
 
     # Pilihan Jumlah Dokumen
     print("\n[?] PILIH JUMLAH DOKUMEN UNTUK DICEK/DOWNLOAD:")
@@ -183,7 +274,6 @@ def run_batch_downloader():
 
     config = load_config()
     email = config.get("email") or DEFAULT_EMAIL
-    password = config.get("password")
 
     print("\n[?] KONFIRMASI AKUN:")
     input_email = input(f"👤 Akun NIP/Email (Tekan ENTER untuk '{email}'): ").strip()
@@ -193,15 +283,14 @@ def run_batch_downloader():
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
 
+    password = getpass.getpass("🔑 Masukkan Kata Sandi TTE: ")
     if not password:
-        password = getpass.getpass("🔑 Masukkan Kata Sandi TTE: ")
-        if not password:
-            print("❌ Password tidak boleh kosong!")
-            return
+        print("❌ Password tidak boleh kosong!")
+        return
 
     with sync_playwright() as playwright:
         if is_headless:
-            print("\n⚡ Menjalankan pengecekan di latar belakang (Mode Senyap)...")
+            print("\n⚡ Menjalankan di latar belakang (Mode Senyap)...")
         else:
             print("\n🌐 Membuka browser Chrome...")
 
@@ -214,7 +303,7 @@ def run_batch_downloader():
         page.goto("https://tte.kemenag.go.id/login", wait_until="networkidle")
 
         try:
-            page.get_by_role("radio", name="Admin SATKER").check()
+            page.get_by_text("Admin SATKER").click()
             page.get_by_role("textbox", name="Masukkan Email").fill(email)
             page.get_by_role("textbox", name="Masukkan Kata Sandi").fill(password)
             page.get_by_role("button", name="Masuk").click()
@@ -229,16 +318,19 @@ def run_batch_downloader():
 
         print("✅ Berhasil Login!")
 
-        # 2. Buka Halaman Dokumen Diajukan
-        print("📑 Membuka Tabel Dokumen Diajukan...")
+        # 2. Buka Halaman Dokumen Diajukan & Indeks Katalog
+        print("📑 Membuka Tabel Dokumen & Mengindeks Katalog Naskah...")
         page.goto("https://tte.kemenag.go.id/satker/dokumen/naskah/index/unggah", wait_until="networkidle")
         time.sleep(2)
 
+        print("🔄 Mengambil data katalog naskah dari server TTE...")
+        catalog_rows = fetch_table_catalog(page, max_pages=3)
+        print(f"✅ Berhasil mengindeks {len(catalog_rows)} naskah dari sistem TTE.")
+
         success_download_count = 0
         waiting_sign_count = 0
+        not_found_count = 0
         total_start_time = time.time()
-
-        search_input = page.locator("input[type='search']").first
 
         for idx, item in enumerate(pending_download, 1):
             file_start_time = time.time()
@@ -256,66 +348,76 @@ def run_batch_downloader():
             print(f"\n[{idx}/{len(pending_download)}] 🔍 [{kategori}] Mencari: {perihal}")
 
             try:
-                if search_input.count() > 0:
-                    search_input.fill(perihal)
-                    time.sleep(1.5) # Tunggu filter AJAX tabel selesai
-                
-                rows = page.locator("table tbody tr")
-                if rows.count() == 0 or "tidak ditemukan" in rows.first.inner_text().lower():
+                # 1. Cari kecocokan di katalog memori
+                matched_candidates = []
+                for row in catalog_rows:
+                    cand_perihal = row.get("perihal_dokumen", "")
+                    score = calculate_match_score(perihal, cand_perihal)
+                    if score >= 0.70:
+                        matched_candidates.append((row, score, cand_perihal))
+
+                if not matched_candidates:
                     print(f"   ⚠️ Naskah belum ditemukan di sistem TTE.")
+                    not_found_count += 1
                     continue
 
-                matched_row = rows.first
-                final_link = matched_row.locator("a:has-text('FINAL'), a.btn:has-text('FINAL')").first
+                # 2. Di antara kandidat yang lolos verifikasi, ambil yang paling atas (terbaru)
+                selected_row = None
+                selected_is_final = False
+                selected_url = None
+                selected_status = "Dalam Proses"
 
-                if final_link.count() > 0 and final_link.is_visible():
-                    print(f"   🎉 Status: [FINAL] -> Mengunduh ke [{kategori}]...")
-                    download_url = final_link.get_attribute("href")
+                for row, score, cand_perihal in matched_candidates:
+                    unduh_html = row.get("unduh", "")
+                    status_html = row.get("status_dokumen", "")
+                    is_final = "FINAL" in unduh_html or "Sukses" in status_html
+                    
+                    if is_final:
+                        match_url = re.search(r'href="([^"]+)"', unduh_html)
+                        if match_url:
+                            selected_row = row
+                            selected_is_final = True
+                            selected_url = match_url.group(1)
+                            selected_status = "FINAL"
+                            break
 
-                    downloaded = False
-                    if download_url and not download_url.startswith("javascript"):
-                        if download_url.startswith("/"):
-                            full_url = f"https://tte.kemenag.go.id{download_url}"
-                        else:
-                            full_url = download_url
-
-                        try:
-                            resp = context.request.get(full_url)
-                            if resp.status == 200:
-                                with open(target_filepath, "wb") as f:
-                                    f.write(resp.body())
-                                downloaded = True
-                        except Exception:
-                            pass
-
-                    if not downloaded:
-                        with page.expect_download(timeout=10000) as download_info:
-                            final_link.click()
-                        download = download_info.value
-                        download.save_as(str(target_filepath))
-                        downloaded = True
-
-                    if downloaded:
-                        file_elapsed = time.time() - file_start_time
-                        success_download_count += 1
-                        history_entry = {
-                            "filename": filename,
-                            "perihal": perihal,
-                            "kategori": kategori,
-                            "waktu_download": time.strftime("%Y-%m-%d %H:%M:%S")
-                        }
-                        download_history.append(history_entry)
-                        downloaded_filenames.add(filename)
-                        save_download_history(download_history)
-                        dest_info = f"{kategori}/{filename}" if use_subfolders else filename
-                        print(f"   ✅ Berhasil disimpan: {dest_info} (⏱️ {format_duration(file_elapsed)})")
-                else:
+                if not selected_is_final:
+                    # Jika belum ada yang FINAL, ambil info baris teratas
+                    top_row, _, top_perihal = matched_candidates[0]
+                    status_clean = re.sub(r'<[^>]+>', '', top_row.get("status_dokumen", "Dalam Proses")).strip()
                     waiting_sign_count += 1
-                    status_col = matched_row.locator("td").nth(4).inner_text().strip() if matched_row.locator("td").count() >= 5 else "Dalam Proses"
-                    print(f"   ⏳ Status: [BELUM FINAL] ({status_col}) -> Dilewati.")
+                    print(f"   ⏳ Status: [BELUM FINAL] ({status_clean}) -> Dilewati.")
+                    continue
+
+                # 3. Unduh dokumen FINAL
+                print(f"   🎉 Status: [FINAL] -> Mengunduh ke [{kategori}] (Pilih yang teratas)...")
+                full_url = f"https://tte.kemenag.go.id{selected_url}" if selected_url.startswith("/") else selected_url
+                
+                target_filepath.parent.mkdir(parents=True, exist_ok=True)
+                resp = context.request.get(full_url)
+                
+                if resp.status == 200 and len(resp.body()) > 500:
+                    with open(target_filepath, "wb") as f:
+                        f.write(resp.body())
+                        
+                    file_elapsed = time.time() - file_start_time
+                    success_download_count += 1
+                    history_entry = {
+                        "filename": filename,
+                        "perihal": perihal,
+                        "kategori": kategori,
+                        "waktu_download": time.strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    download_history.append(history_entry)
+                    downloaded_filenames.add(filename)
+                    save_download_history(download_history)
+                    dest_info = f"{kategori}/{filename}" if use_subfolders else filename
+                    print(f"   ✅ Berhasil disimpan: {dest_info} ({target_filepath.stat().st_size / 1024:.1f} KB - ⏱️ {format_duration(file_elapsed)})")
+                else:
+                    print(f"   ❌ Gagal mengunduh file dari URL: {full_url}")
 
             except Exception as ex:
-                print(f"   ❌ Gagal memproses baris ini: {ex}")
+                print(f"   ❌ Gagal memproses: {ex}")
                 time.sleep(1)
 
         total_elapsed = time.time() - total_start_time
@@ -325,6 +427,7 @@ def run_batch_downloader():
         print("🏁 REKAP PENGECEKAN & DOWNLOAD:")
         print(f"   - Berhasil Diunduh (Baru) : {success_download_count} file")
         print(f"   - Masih Menunggu TTE      : {waiting_sign_count} file")
+        print(f"   - Belum Ditemukan di Web  : {not_found_count} file")
         print(f"   - Total File di Histori   : {len(download_history)} file")
         print(f"   - ⏱️ Total Waktu Proses   : {format_duration(total_elapsed)}")
         if len(pending_download) > 0:

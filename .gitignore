@@ -9,9 +9,12 @@ venv/
 env/
 .env
 
-# Large archives & temporary downloads
-niarrikues.zip
-HASIL_DOWNLOAD_TTE/*.pdf
-Sertifikat_MGMP.pdf
+# Large archives & temporary outputs
+*.zip
+*.pdf
+HASIL_DOWNLOAD_TTE/
 SERTIFIKAT_KBC/
 split_sertifikat.py
+recorded_download.py
+test_*.py
+inspect_*.py

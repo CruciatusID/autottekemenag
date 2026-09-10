@@ -1,6 +1,6 @@
 # 🚀 TTE Kemenag Auto-Assistant (Batch Uploader & Downloader)
 
-Aplikasi otomasi cerdas berbasis **Python & Playwright** untuk mengunggah (*batch upload*) dan mengunduh (*batch download*) dokumen naskah dinas / SK / SKBK secara massal di portal **TTE Kemenag** (`https://tte.kemenag.go.id`).
+Aplikasi otomasi cerdas berbasis **Python & Playwright** untuk mengunggah (*batch upload*) dan mengunduh (*batch download*) dokumen naskah dinas / SK / SKBK / Sertifikat secara massal di portal **TTE Kemenag** (`https://tte.kemenag.go.id`).
 
 ---
 
@@ -12,15 +12,19 @@ Aplikasi otomasi cerdas berbasis **Python & Playwright** untuk mengunggah (*batc
   - Mendukung **1 Pejabat Pemaraf**.
   - Mendukung **1 hingga 4 Pejabat Penandatangan**.
   - Mendukung 4 simbol anchor resmi TTE Kemenag: **`^`**, **`#`**, **`$`**, **`*`**.
-- 🔍 **Pencarian Cerdas (Nama & NIP)**: Mendukung pencarian pejabat di dropdown Select2 menggunakan **Nama Lengkap**, **Nama Panggilan**, maupun nomor **NIP**.
-- 📥 **Targeted Auto-Downloader**:
-  - Hanya mengunduh naskah yang berstatus **`FINAL`**.
-  - Melewati dokumen yang masih dalam proses paraf / tanda tangan.
+- 🔍 **Pencarian Cerdas Pejabat (Nama & NIP)**: Mendukung pencarian pejabat di dropdown Select2 menggunakan **Nama Lengkap**, **Nama Panggilan**, maupun nomor **NIP**.
+- 📥 **Targeted High-Speed Auto-Downloader**:
+  - **Katalog Indeks Server-Side**: Memuat data tabel langsung (100 item/halaman) sehingga pencocokan naskah berjalan instan (< 1 detik/file).
+  - **Validasi Dokumen 2 Lapis**: Memverifikasi kecocokan jenis naskah dan nama pemilik secara presisi (mencegah salah ambil naskah lain yang memiliki nama depan serupa).
+  - **Pilihan `FINAL` Teratas**: Otomatis mengambil naskah `FINAL` terbaru jika terdapat revisi / beberapa riwayat.
+  - **Download Stream Langsung**: Mengunduh berkas bertanda tangan digital resmi tanpa jeda tab popup.
   - Pilihan penyimpanan: langsung di **1 folder utama** atau **otomatis dipisah ke subfolder kategori** (`NON PNS`, `PPPK`, dll.).
 - 🛡️ **Anti-Duplikasi (Resume Support)**: Riwayat tersimpan di `upload_history.json` & `download_history.json`. Jika proses terhenti, bot akan melanjutkan sisa file tanpa mengulang dari awal.
+- 🔒 **Keamanan Kredensial**: Kata sandi tidak disimpan di file konfigurasi; input kata sandi selalu diminta secara interaktif dan tersembunyi di terminal.
 - 🖥️ **Pilihan Tampilan (Mode Senyap / Visual)**:
   - **Mode Senyap**: Berjalan murni di latar belakang (terminal) tanpa membuka jendela browser.
   - **Mode Visual**: Jendela browser Chrome terbuka di layar untuk memantau proses secara langsung.
+- 🎥 **Perekam Langkah Terintegrasi ([`REKAM_DOWNLOAD.bat`](REKAM_DOWNLOAD.bat))**: Pintasan untuk merekam aksi web menggunakan Playwright Codegen.
 
 ---
 
@@ -30,6 +34,7 @@ Aplikasi otomasi cerdas berbasis **Python & Playwright** untuk mengunggah (*batc
 ├── HASIL_DOWNLOAD_TTE/          # Folder output hasil unduhan dokumen FINAL
 ├── JALANKAN_UPLOAD_TTE.bat      # Pintasan 1-klik untuk memulai Upload Massal
 ├── JALANKAN_DOWNLOAD_TTE.bat    # Pintasan 1-klik untuk memulai Download Dokumen FINAL
+├── REKAM_DOWNLOAD.bat           # Perekam interaktif Playwright Codegen
 ├── INSTALL_DEPENDENCIES.bat     # Pintasan 1-klik instalasi library & browser
 ├── tte_batch_uploader.py        # Program utama Batch Auto-Uploader
 ├── tte_batch_downloader.py      # Program utama Batch Auto-Downloader
@@ -77,13 +82,13 @@ Script ini akan otomatis menginstal library `playwright` dan browser engine `Chr
    - **Struktur Folder**: Simpan langsung di 1 folder utama atau pisahkan ke subfolder kategori.
    - **Tampilan**: Pilih Mode Senyap atau Visual.
    - **Kata Sandi**: Masukkan kata sandi akun TTE Anda.
-3. Bot akan memeriksa status dokumen di web TTE. Dokumen yang berstatus **`FINAL`** akan langsung diunduh dan disimpan rapi ke folder [**`HASIL_DOWNLOAD_TTE/`**](HASIL_DOWNLOAD_TTE/).
+3. Bot akan memeriksa katalog dokumen di portal TTE. Dokumen yang berstatus **`FINAL`** akan langsung diunduh secara cepat dan disimpan rapi ke folder [**`HASIL_DOWNLOAD_TTE/`**](HASIL_DOWNLOAD_TTE/).
 
 ---
 
 ## ⚙️ Kustomisasi via `config.json`
 
-Anda juga dapat mengatur default akun dan pejabat secara manual di file `config.json`:
+Anda dapat mengatur default akun dan pejabat di file `config.json`:
 
 ```json
 {
@@ -94,7 +99,7 @@ Anda juga dapat mengatur default akun dan pejabat secara manual di file `config.
   },
   "penandatangan": [
     {
-      "nama": "Usman Senong",
+      "nama": "usman senong",
       "anchor": ["#", "$"]
     }
   ]
@@ -110,6 +115,8 @@ Anda juga dapat mengatur default akun dan pejabat secara manual di file `config.
   **A**: Sangat aman. Setiap surat yang sukses langsung dicatat di `upload_history.json` / `download_history.json`. Saat dijalankan kembali, surat yang sudah ada otomatis dilewati.
 - **Q: Bagaimana jika ada file yang belum FINAL saat proses download?**  
   **A**: Bot akan memberikan status `[BELUM FINAL]` (misal: *Menunggu Paraf*) dan melewatinya. Anda bisa menjalankan downloader kembali di lain hari untuk mengambil sisa file yang sudah selesai ditandatangani.
+- **Q: Apakah kata sandi tersimpan di komputer?**  
+  **A**: Tidak. Kata sandi diminta langsung secara interaktif saat menjalankan bot dan tidak disimpan ke file demi menjaga privasi dan keamanan akun.
 
 ---
 

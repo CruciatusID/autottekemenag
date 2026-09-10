@@ -115,8 +115,10 @@ def get_all_pdf_files(base_path: Path, custom_path_str: str = None):
     files = []
     # Pindai seluruh file PDF di dalam folder dan seluruh subfoldernya secara otomatis
     for pdf in sorted(scan_dir.rglob("*.pdf")):
-        # Abaikan file di folder tersembunyi / virtual env jika ada
-        if any(part.startswith(".") or part in ["__pycache__", "venv", "env"] for part in pdf.parts):
+        # Abaikan file di folder tersembunyi / virtual env / hasil download jika ada
+        if any(part.startswith(".") or part in ["__pycache__", "venv", "env", "HASIL_DOWNLOAD_TTE"] for part in pdf.parts):
+            continue
+        if pdf.name in ["Sertifikat_MGMP.pdf", "recorded_download.py"]:
             continue
             
         parent_name = pdf.parent.name if pdf.parent != scan_dir else "ROOT"
