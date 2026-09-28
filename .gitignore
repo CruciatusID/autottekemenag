@@ -8,6 +8,8 @@ __pycache__/
 venv/
 env/
 .env
+.venv/
+tte28sep_backup_asli/
 
 # Large archives & temporary outputs
 *.zip

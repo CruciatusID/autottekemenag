@@ -4,6 +4,7 @@ import json
 import time
 import re
 import getpass
+import difflib
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
@@ -59,6 +60,17 @@ def normalize_text(text: str) -> str:
     text = re.sub(r'[\s\-_,./\\]+', ' ', text)
     return text.strip()
 
+# Kata-kata umum / stop words yang sering muncul bersamaan di portal Kemenag
+# Jangan biarkan kata-kata umum ini membuat dokumen yang berbeda dikira sama
+STOP_WORDS = {
+    "kemenag", "kementerian", "agama", "kabupaten", "kab", "tana", "toraja",
+    "kantor", "tahun", "bulan", "thn", "bln",
+    "oktober", "november", "desember", "januari", "februari", "maret",
+    "april", "mei", "juni", "juli", "agustus", "september",
+    "dokumen", "surat", "nomor", "no", "2024", "2025", "2026", "2027",
+    "dan", "di", "ke", "dari", "pada", "untuk", "dengan"
+}
+
 def is_doc_type_match(target_perihal: str, candidate_perihal: str) -> bool:
     """Memeriksa apakah jenis dokumen cocok (misal Sertifikat KBC vs SKBK)."""
     t_norm = normalize_text(target_perihal)
@@ -76,6 +88,7 @@ def is_doc_type_match(target_perihal: str, candidate_perihal: str) -> bool:
         "laporan kondisi barang",
         "laporan existing",
         "laporan",
+        "jadwal",
         "usulan",
         "rekomendasi"
     ]
@@ -89,24 +102,52 @@ def is_doc_type_match(target_perihal: str, candidate_perihal: str) -> bool:
     return True
 
 def calculate_match_score(target_perihal: str, candidate_perihal: str) -> float:
-    """Menghitung skor kecocokan antara target dan kandidat perihal (0.0 - 1.0)."""
+    """
+    Menghitung skor kecocokan antara target dan kandidat perihal (0.0 - 1.0).
+    Akurat, ketat, dan memprioritaskan kata pembeda (nama, bagian tugas, dll).
+    """
     if not is_doc_type_match(target_perihal, candidate_perihal):
         return 0.0
 
     t_norm = normalize_text(target_perihal)
     c_norm = normalize_text(candidate_perihal)
     
+    if not t_norm or not c_norm:
+        return 0.0
+
+    # 1. Kecocokan Sempurna (100% Persis)
     if t_norm == c_norm:
         return 1.0
-        
+
     t_words = [w for w in t_norm.split() if len(w) > 1]
     c_words = [w for w in c_norm.split() if len(w) > 1]
     
     if not t_words or not c_words:
         return 0.0
-        
-    matched_words = sum(1 for w in t_words if w in c_norm)
-    return matched_words / len(t_words)
+
+    t_set = set(t_words)
+    c_set = set(c_words)
+
+    # 2. Kata-kata Pembeda (Distinctive Words: Nama orang, jenis sub-jadwal, dsb.)
+    t_distinct = t_set - STOP_WORDS
+    c_distinct = c_set - STOP_WORDS
+
+    # Jika target memiliki kata pembeda, kata pembeda tersebut WAJIB cocok tinggi di kandidat
+    if t_distinct:
+        matched_distinct = t_distinct.intersection(c_set)
+        distinct_ratio = len(matched_distinct) / len(t_distinct)
+        # Jika kata kunci pembeda tidak ada di kandidat, tolak langsung (skor 0)
+        if distinct_ratio < 0.80:
+            return 0.0
+            
+    # 3. Hitung Jaccard similarity & Sequence similarity
+    intersection = t_set.intersection(c_set)
+    union = t_set.union(c_set)
+    jaccard = len(intersection) / len(union) if union else 0.0
+    seq_ratio = difflib.SequenceMatcher(None, t_norm, c_norm).ratio()
+    
+    final_score = (jaccard * 0.4) + (seq_ratio * 0.6)
+    return round(final_score, 4)
 
 def fetch_table_catalog(page, max_pages: int = 3) -> list:
     """
@@ -148,7 +189,7 @@ def get_target_files():
 
     # 1. Pindai langsung dari struktur folder lokal di BASE_DIR
     for pdf in BASE_DIR.rglob("*.pdf"):
-        if any(part.startswith(".") or part in ["__pycache__", "venv", "HASIL_DOWNLOAD_TTE"] for part in pdf.parts):
+        if any(part.startswith(".") or part in ["__pycache__", "venv", "HASIL_DOWNLOAD_TTE"] or "backup" in part.lower() for part in pdf.parts):
             continue
         if pdf.name not in ["recorded_download.py", "Sertifikat_MGMP.pdf"]:
             parent_folder = pdf.parent.name if pdf.parent != BASE_DIR else "ROOT"
@@ -166,10 +207,14 @@ def get_target_files():
                     if isinstance(item, dict):
                         fn = item.get("filename")
                         if fn:
+                            existing = file_map.get(fn, {})
+                            local_kat = existing.get("kategori")
+                            hist_kat = item.get("kategori")
+                            chosen_kat = local_kat if (local_kat and local_kat != "ROOT") else (hist_kat or "LAINNYA")
                             file_map[fn] = {
                                 "filename": fn,
-                                "perihal": item.get("perihal", Path(fn).stem),
-                                "kategori": item.get("kategori", file_map.get(fn, {}).get("kategori", "LAINNYA"))
+                                "perihal": item.get("perihal", existing.get("perihal", Path(fn).stem)),
+                                "kategori": chosen_kat
                             }
                     elif isinstance(item, str) and item not in file_map:
                         file_map[item] = {
@@ -353,7 +398,7 @@ def run_batch_downloader():
                 for row in catalog_rows:
                     cand_perihal = row.get("perihal_dokumen", "")
                     score = calculate_match_score(perihal, cand_perihal)
-                    if score >= 0.70:
+                    if score >= 0.80:
                         matched_candidates.append((row, score, cand_perihal))
 
                 if not matched_candidates:
@@ -361,13 +406,24 @@ def run_batch_downloader():
                     not_found_count += 1
                     continue
 
-                # 2. Di antara kandidat yang lolos verifikasi, ambil yang paling atas (terbaru)
+                # Urutkan berdasarkan skor tertinggi (score DESC)
+                # Playwright/DataTable katalog urutan aslinya adalah kronologis (terbaru di atas)
+                # Dengan sort key score, dokumen yang paling cocok 100% selalu diprioritaskan
+                matched_candidates.sort(key=lambda x: x[1], reverse=True)
+
+                best_score = matched_candidates[0][1]
+                # Saring hanya kandidat terbaik dengan selisih skor <= 2%
+                top_candidates = [c for c in matched_candidates if c[1] >= best_score - 0.02]
+
+                # 2. Di antara kandidat terbaik, ambil yang statusnya FINAL (ambil yang terbaru)
                 selected_row = None
+                selected_score = 0
+                selected_cand_perihal = ""
                 selected_is_final = False
                 selected_url = None
                 selected_status = "Dalam Proses"
 
-                for row, score, cand_perihal in matched_candidates:
+                for row, score, cand_perihal in top_candidates:
                     unduh_html = row.get("unduh", "")
                     status_html = row.get("status_dokumen", "")
                     is_final = "FINAL" in unduh_html or "Sukses" in status_html
@@ -376,21 +432,24 @@ def run_batch_downloader():
                         match_url = re.search(r'href="([^"]+)"', unduh_html)
                         if match_url:
                             selected_row = row
+                            selected_score = score
+                            selected_cand_perihal = cand_perihal
                             selected_is_final = True
                             selected_url = match_url.group(1)
                             selected_status = "FINAL"
                             break
 
                 if not selected_is_final:
-                    # Jika belum ada yang FINAL, ambil info baris teratas
-                    top_row, _, top_perihal = matched_candidates[0]
+                    # Jika belum ada yang FINAL, ambil info naskah teratas dari kandidat terbaik
+                    top_row, top_sc, top_perihal = top_candidates[0]
                     status_clean = re.sub(r'<[^>]+>', '', top_row.get("status_dokumen", "Dalam Proses")).strip()
                     waiting_sign_count += 1
-                    print(f"   ⏳ Status: [BELUM FINAL] ({status_clean}) -> Dilewati.")
+                    print(f"   ⏳ Status: [BELUM FINAL] ({status_clean}) - Kecocokan: {top_sc*100:.0f}% -> Dilewati.")
                     continue
 
                 # 3. Unduh dokumen FINAL
-                print(f"   🎉 Status: [FINAL] -> Mengunduh ke [{kategori}] (Pilih yang teratas)...")
+                clean_cand_name = re.sub(r'<[^>]+>', '', selected_cand_perihal).strip()
+                print(f"   🎉 Status: [FINAL] -> Cocok: '{clean_cand_name}' ({selected_score*100:.0f}%) -> Mengunduh...")
                 full_url = f"https://tte.kemenag.go.id{selected_url}" if selected_url.startswith("/") else selected_url
                 
                 target_filepath.parent.mkdir(parents=True, exist_ok=True)

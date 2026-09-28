@@ -2,6 +2,26 @@
 title TTE Kemenag Auto-Uploader
 cd /d "%~dp0"
 
+:: ==========================================
+:: Deteksi Interpreter Python Otomatis
+:: ==========================================
+set "PYTHON_CMD="
+if exist "%~dp0.venv\Scripts\python.exe" (
+    set "PYTHON_CMD=%~dp0.venv\Scripts\python.exe"
+) else if exist "C:\Users\Ande\AppData\Local\Programs\Python\Python313\python.exe" (
+    set "PYTHON_CMD=C:\Users\Ande\AppData\Local\Programs\Python\Python313\python.exe"
+) else if exist "%LOCALAPPDATA%\Programs\Python\Python313\python.exe" (
+    set "PYTHON_CMD=%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
+) else (
+    where python >nul 2>&1
+    if not errorlevel 1 (
+        set "PYTHON_CMD=python"
+    ) else (
+        where py >nul 2>&1
+        if not errorlevel 1 set "PYTHON_CMD=py"
+    )
+)
+
 :menu
 cls
 echo ===================================================
@@ -20,6 +40,7 @@ echo 2. Lihat List File yang Sudah Diupload
 echo 3. Reset Histori Upload (Mulai dari awal)
 echo 4. Keluar
 echo ===================================================
+set "pilihan="
 set /p pilihan="Pilih menu (1/2/3/4): "
 
 if "%pilihan%"=="1" goto jalankan
@@ -34,7 +55,16 @@ cls
 echo ===================================================
 echo     Menjalankan TTE Kemenag Batch Auto-Uploader
 echo ===================================================
-"C:\Users\Ande\AppData\Local\Programs\Python\Python313\python.exe" tte_batch_uploader.py
+
+if not defined PYTHON_CMD (
+    echo [ERROR] Python tidak ditemukan di sistem!
+    echo Silakan jalankan INSTALL_DEPENDENCIES.bat terlebih dahulu.
+    echo.
+    pause
+    goto menu
+)
+
+"%PYTHON_CMD%" tte_batch_uploader.py
 echo.
 pause
 goto menu
@@ -46,6 +76,12 @@ echo     Daftar File yang Sudah Diupload
 echo ===================================================
 
 if not exist upload_history.json goto histori_kosong
+
+if not defined PYTHON_CMD (
+    echo [ERROR] Python tidak ditemukan di sistem!
+    pause
+    goto menu
+)
 
 echo import json > tmp_view.py
 echo try: >> tmp_view.py
@@ -60,7 +96,7 @@ echo         print(' Histori ada, tapi kosong.') >> tmp_view.py
 echo except Exception as e: >> tmp_view.py
 echo     print(' Error membaca data:', e) >> tmp_view.py
 
-"C:\Users\Ande\AppData\Local\Programs\Python\Python313\python.exe" tmp_view.py
+"%PYTHON_CMD%" tmp_view.py
 del tmp_view.py
 goto lanjut_lihat
 
