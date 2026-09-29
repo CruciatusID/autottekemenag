@@ -222,8 +222,12 @@ def run_batch_uploader():
     jenis_dokumen = config.get("jenis_dokumen") or DEFAULT_JENIS_DOKUMEN
     
     pemaraf_cfg = config.get("pemaraf")
-    if isinstance(pemaraf_cfg, dict):
-        pemaraf_name = pemaraf_cfg.get("nama", DEFAULT_PEMARAF)
+    if pemaraf_cfg is None and "pemaraf" in config:
+        pemaraf_name = ""
+    elif isinstance(pemaraf_cfg, dict):
+        pemaraf_name = pemaraf_cfg.get("nama", "")
+        if pemaraf_name is None:
+            pemaraf_name = ""
     elif isinstance(pemaraf_cfg, str):
         pemaraf_name = pemaraf_cfg
     else:
@@ -242,9 +246,13 @@ def run_batch_uploader():
         email = input_email
 
     # Konfirmasi / Ubah Pemaraf
-    input_pemaraf = input(f"✍️  Nama Pemaraf (Tekan ENTER untuk '{pemaraf_name}'): ").strip()
+    current_pemaraf_str = pemaraf_name if pemaraf_name else "Tanpa Pemaraf (Dilewati)"
+    input_pemaraf = input(f"✍️  Nama Pemaraf (Ketik '-' / 'skip' untuk tanpa pemaraf | ENTER: '{current_pemaraf_str}'): ").strip()
     if input_pemaraf:
-        pemaraf_name = input_pemaraf
+        if input_pemaraf.lower() in ["-", "0", "skip", "tidak", "none", "no", "lewat"]:
+            pemaraf_name = ""
+        else:
+            pemaraf_name = input_pemaraf
 
     # Konfirmasi / Ubah Penandatangan
     signers_display = ", ".join([f"{s.get('nama')} (Anchor: {', '.join(s.get('anchors', ['^']))})" for s in signers])
@@ -273,7 +281,7 @@ def run_batch_uploader():
 
     # Simpan kembali ke config.json jika ada perubahan
     config["email"] = email
-    config["pemaraf"] = {"nama": pemaraf_name}
+    config["pemaraf"] = {"nama": pemaraf_name} if pemaraf_name else None
     config["penandatangan"] = [
         {"nama": s["nama"], "anchor": s["anchors"] if len(s["anchors"]) > 1 else s["anchors"][0]}
         for s in signers
@@ -285,7 +293,7 @@ def run_batch_uploader():
     print("-" * 60)
     print(f"👤 Akun NIP/Email    : {email}")
     print(f"📑 Jenis Dokumen     : {jenis_dokumen}")
-    print(f"✍️  Pemaraf          : {pemaraf_name}")
+    print(f"✍️  Pemaraf          : {pemaraf_name if pemaraf_name else '(Dilewati / Tanpa Pemaraf)'}")
     print(f"🖋️  Penandatangan ({len(signers)} Orang):")
     for s_idx, s in enumerate(signers, 1):
         anc_str = ", ".join(s.get("anchors", ["^"]))
@@ -373,27 +381,30 @@ def run_batch_uploader():
                 page.wait_for_url("**/create_step_two**", timeout=15000)
                 time.sleep(1)
 
-                # 6. Tahap 2: Tambah 1 Pemaraf
-                print(f"   🔍 Memilih Pemaraf: {pemaraf_name}...")
-                page.get_by_text("Cari Pegawai").click()
-                time.sleep(0.3)
-                search_box = page.locator("input.select2-search__field").first
-                search_box.fill(pemaraf_name)
-                time.sleep(2) # Tunggu AJAX response
-                
-                # Coba cari yang cocok dengan teks, jika tidak cocok (misal cari via NIP), pilih hasil pertama
-                matched_pemaraf = page.locator(".select2-results__option").filter(has_text=re.compile(re.escape(pemaraf_name), re.IGNORECASE))
-                if matched_pemaraf.count() > 0:
-                    matched_pemaraf.first.click()
+                # 6. Tahap 2: Pemaraf (Bisa dilewati jika dokumen tanpa pemaraf)
+                if pemaraf_name and pemaraf_name.strip():
+                    print(f"   🔍 Memilih Pemaraf: {pemaraf_name}...")
+                    page.get_by_text("Cari Pegawai").click()
+                    time.sleep(0.3)
+                    search_box = page.locator("input.select2-search__field").first
+                    search_box.fill(pemaraf_name)
+                    time.sleep(2) # Tunggu AJAX response
+                    
+                    # Coba cari yang cocok dengan teks, jika tidak cocok (misal cari via NIP), pilih hasil pertama
+                    matched_pemaraf = page.locator(".select2-results__option").filter(has_text=re.compile(re.escape(pemaraf_name), re.IGNORECASE))
+                    if matched_pemaraf.count() > 0:
+                        matched_pemaraf.first.click()
+                    else:
+                        first_opt = page.locator(".select2-results__option:not(.select2-results__message)").first
+                        first_opt.click()
+
+                    time.sleep(0.5)
+
+                    page.get_by_role("button", name="Tambah Pemaraf").click()
+                    time.sleep(1.5)
+                    page.wait_for_load_state("networkidle")
                 else:
-                    first_opt = page.locator(".select2-results__option:not(.select2-results__message)").first
-                    first_opt.click()
-
-                time.sleep(0.5)
-
-                page.get_by_role("button", name="Tambah Pemaraf").click()
-                time.sleep(1.5)
-                page.wait_for_load_state("networkidle")
+                    print("   ⏭️  Melewati Tahap Pemaraf (Dokumen langsung ke Penandatangan)...")
                 
                 # Klik Lanjut menuju step three
                 page.get_by_role("link", name="Lanjut ").click()

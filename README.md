@@ -105,7 +105,9 @@ Anda dapat mengatur default akun dan pejabat di file `config.json`:
   ]
 }
 ```
-> *Catatan: Satu penandatangan bisa memiliki lebih dari 1 anchor sekaligus (misal `["#", "$"]` atau `"#,$"`). Bot akan otomatis mencentang semua anchor tersebut dalam satu kali klik di portal TTE.*
+> *Catatan Pejabat:*
+> - *Pemaraf bersifat opsional. Atur `"pemaraf": null` di `config.json` atau ketik `-` / `skip` di terminal jika dokumen tidak memerlukan pemaraf.*
+> - *Satu penandatangan bisa memiliki lebih dari 1 anchor sekaligus (misal `["#", "$"]` atau `"#,$"`). Bot akan otomatis mencentang semua anchor tersebut dalam satu kali klik di portal TTE.*
 
 ---
 
