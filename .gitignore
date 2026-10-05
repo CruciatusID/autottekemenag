@@ -20,3 +20,9 @@ split_sertifikat.py
 recorded_download.py
 test_*.py
 inspect_*.py
+
+# Logs & Backup
+*.log
+*.csv
+extracted.txt
+backup_riwayat/

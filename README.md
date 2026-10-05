@@ -1,47 +1,55 @@
-# 🚀 TTE Kemenag Auto-Assistant (Batch Uploader & Downloader)
+# 🚀 TTE Kemenag Auto-Assistant (Full Suite)
 
-Aplikasi otomasi cerdas berbasis **Python & Playwright** untuk mengunggah (*batch upload*) dan mengunduh (*batch download*) dokumen naskah dinas / SK / SKBK / Sertifikat secara massal di portal **TTE Kemenag** (`https://tte.kemenag.go.id`).
+Aplikasi otomasi cerdas berbasis **Python & Playwright** untuk mengelola naskah dinas / SK / SKBK / Sertifikat secara massal di portal **TTE Kemenag** (`https://tte.kemenag.go.id`). 
+
+Repositori ini adalah sebuah *Full Suite* yang mencakup fitur **Auto-Upload**, **Auto-Download**, **Auto-Cancel (Pembatalan)**, hingga **Auto-Delete (Hapus Permanen)**.
 
 ---
 
 ## 🌟 Fitur Utama
 
-- ⚡ **Batch Auto-Upload**: Mengunggah puluhan hingga ratusan file PDF secara berurutan dan otomatis.
-- 📂 **Pemindaian Folder Fleksibel**: Otomatis mendeteksi file PDF di dalam folder utama maupun seluruh subfolder (misal: `NON PNS`, `PNS KEMENAG`, `PPPK PEMDA`, dll.).
+- ⚡ **Batch Auto-Upload**: Mengunggah puluhan hingga ratusan file PDF secara berurutan dan otomatis dari berbagai folder/subfolder sekaligus.
+- 📥 **High-Speed Auto-Downloader**: Mengunduh berkas berstatus `FINAL` secara cepat tanpa membuka tab baru (Direct Stream) dan otomatis merapikannya ke dalam subfolder kategori.
+- 🛑 **Batch Canceler (Pembatalan Massal)**: Salah unggah dokumen? Bot ini bisa membatalkan (*cancel*) ratusan dokumen secara otomatis murni via tembakan API super cepat.
+- 🗑️ **Batch Permanent Deleter**: Menarik daftar seluruh "Dokumen Dibatalkan", menyajikannya dalam tabel & CSV, lalu menyapu bersih (menghapus permanen) semuanya dari server dalam 1 klik.
 - ✍️ **Konfigurasi Pejabat Dinamis**:
-  - Mendukung **1 Pejabat Pemaraf**.
+  - Mendukung **1 Pejabat Pemaraf** (Bisa di-skip).
   - Mendukung **1 hingga 4 Pejabat Penandatangan**.
-  - Mendukung 4 simbol anchor resmi TTE Kemenag: **`^`**, **`#`**, **`$`**, **`*`**.
-- 🔍 **Pencarian Cerdas Pejabat (Nama & NIP)**: Mendukung pencarian pejabat di dropdown Select2 menggunakan **Nama Lengkap**, **Nama Panggilan**, maupun nomor **NIP**.
-- 📥 **Targeted High-Speed Auto-Downloader**:
-  - **Katalog Indeks Server-Side**: Memuat data tabel langsung (100 item/halaman) sehingga pencocokan naskah berjalan instan (< 1 detik/file).
-  - **Validasi Dokumen 2 Lapis**: Memverifikasi kecocokan jenis naskah dan nama pemilik secara presisi (mencegah salah ambil naskah lain yang memiliki nama depan serupa).
-  - **Pilihan `FINAL` Teratas**: Otomatis mengambil naskah `FINAL` terbaru jika terdapat revisi / beberapa riwayat.
-  - **Download Stream Langsung**: Mengunduh berkas bertanda tangan digital resmi tanpa jeda tab popup.
-  - Pilihan penyimpanan: langsung di **1 folder utama** atau **otomatis dipisah ke subfolder kategori** (`NON PNS`, `PPPK`, dll.).
-- 🛡️ **Anti-Duplikasi (Resume Support)**: Riwayat tersimpan di `upload_history.json` & `download_history.json`. Jika proses terhenti, bot akan melanjutkan sisa file tanpa mengulang dari awal.
-- 🔒 **Keamanan Kredensial**: Kata sandi tidak disimpan di file konfigurasi; input kata sandi selalu diminta secara interaktif dan tersembunyi di terminal.
-- 🖥️ **Pilihan Tampilan (Mode Senyap / Visual)**:
-  - **Mode Senyap**: Berjalan murni di latar belakang (terminal) tanpa membuka jendela browser.
-  - **Mode Visual**: Jendela browser Chrome terbuka di layar untuk memantau proses secara langsung.
-- 🎥 **Perekam Langkah Terintegrasi ([`REKAM_DOWNLOAD.bat`](REKAM_DOWNLOAD.bat))**: Pintasan untuk merekam aksi web menggunakan Playwright Codegen.
+  - Mendukung multi-anchor (misal: `^`, `#`, `$`, `*`).
+- 🛡️ **Anti-Duplikasi (Resume Support)**: Memiliki sistem riwayat cerdas (`upload_history.json`, dll). Jika proses mati lampu atau terhenti, bot akan melanjutkannya dari dokumen terakhir tanpa mengulang dari awal.
+- 🔒 **Keamanan & Transparansi**: Kata sandi diminta secara interaktif di terminal (tidak disimpan di file). Dilengkapi juga dengan log dan script inspeksi jaringan.
 
 ---
 
 ## 📋 Struktur Direktori Projek
 
 ```text
-├── HASIL_DOWNLOAD_TTE/          # Folder output hasil unduhan dokumen FINAL
-├── JALANKAN_UPLOAD_TTE.bat      # Pintasan 1-klik untuk memulai Upload Massal
-├── JALANKAN_DOWNLOAD_TTE.bat    # Pintasan 1-klik untuk memulai Download Dokumen FINAL
-├── REKAM_DOWNLOAD.bat           # Perekam interaktif Playwright Codegen
-├── INSTALL_DEPENDENCIES.bat     # Pintasan 1-klik instalasi library & browser
-├── tte_batch_uploader.py        # Program utama Batch Auto-Uploader
-├── tte_batch_downloader.py      # Program utama Batch Auto-Downloader
-├── config.json                  # Konfigurasi akun, pemaraf, penandatangan, & anchor
-├── upload_history.json          # Catatan histori dokumen yang sukses diunggah
-├── download_history.json        # Catatan histori dokumen yang sukses diunduh
-└── README.md                    # Dokumentasi panduan penggunaan
+📁 HASIL_DOWNLOAD_TTE/          # Folder output hasil unduhan dokumen FINAL
+📁 backup_riwayat/              # Folder pencadangan otomatis untuk upload_history
+📄 config.json                  # Konfigurasi akun, pemaraf, penandatangan, & anchor
+📄 upload_history.json          # Database riwayat naskah yang berhasil diunggah
+
+🚀 Launcher (Pintasan 1-Klik)
+├── INSTALL_DEPENDENCIES.bat        # Instalasi library & browser Playwright (Jalankan pertama kali)
+├── JALANKAN_UPLOAD_TTE.bat         # Memulai Upload Massal
+├── JALANKAN_DOWNLOAD_TTE.bat       # Memulai Download Naskah FINAL
+├── JALANKAN_BATALKAN_TTE.bat       # Membatalkan naskah massal (API)
+└── JALANKAN_HAPUS_PERMANEN_TTE.bat # Menghapus permanen dokumen batal (API)
+
+🤖 Core Scripts (Logika Otomatisasi Python)
+├── tte_batch_uploader.py
+├── tte_batch_downloader.py
+├── tte_batch_canceler.py
+└── tte_batch_deleter.py
+
+🕵️ Inspector Scripts (Alat Edukasi/Penyadap API)
+├── inspeksi_batalkan.py
+├── inspeksi_hapus.py
+└── inspeksi_proses_tte.py
+
+📘 Dokumen
+├── README.md                       # Dokumentasi panduan penggunaan ini
+└── BLUEPRINT_INTEGRASI_CUTI.md     # Rancangan sistem masa depan (Integrasi Aplikasi Cuti via RPA)
 ```
 
 ---
@@ -54,41 +62,55 @@ Aplikasi otomasi cerdas berbasis **Python & Playwright** untuk mengunggah (*batc
 
 ---
 
-## 🚀 Panduan Penggunaan Cepat (Quick Start)
+## 🚀 Panduan Penggunaan (Tutorial)
 
-### 1. Instalasi Dependensi (Cukup Sekali di Awal)
+### 1. Instalasi (Cukup Sekali di Awal)
 Dobel-klik file [**`INSTALL_DEPENDENCIES.bat`**](INSTALL_DEPENDENCIES.bat).
-Script ini akan otomatis menginstal library `playwright` dan browser engine `Chromium`.
+Script ini akan otomatis menginstal `playwright` dan browser engine `Chromium`.
 
 ---
 
-### 2. Mengunggah Surat Secara Massal (Batch Upload)
-1. Letakkan file-file PDF yang ingin diunggah ke dalam folder projek ini (bisa dipisah dalam subfolder seperti `PNS`, `PPPK`, dll).
+### 2. Mengunggah Surat (Batch Upload)
+1. Kumpulkan file PDF di folder projek ini (boleh dalam subfolder).
 2. Dobel-klik [**`JALANKAN_UPLOAD_TTE.bat`**](JALANKAN_UPLOAD_TTE.bat).
-3. Anda akan dipandu oleh menu interaktif di terminal:
-   - **Path Folder PDF**: Tekan `ENTER` untuk folder saat ini (atau drag-and-drop folder lain).
-   - **Jumlah Dokumen**: Pilih mode tes (1 atau 2 file) atau semua antrean.
-   - **Tampilan**: Tekan `ENTER` untuk Mode Senyap (latar belakang).
-   - **Konfirmasi Pejabat**: Konfirmasi NIP/Email, nama Pemaraf, dan nama Penandatangan (beserta anchornya).
-   - **Kata Sandi**: Masukkan kata sandi akun TTE Anda.
-4. Bot akan memproses seluruh surat hingga selesai! 🎉
+3. Anda akan dipandu oleh menu interaktif:
+   - Pilih jumlah (Uji Coba 1-2 file atau Semua).
+   - Verifikasi nama Pemaraf dan Penandatangan.
+   - Masukkan kata sandi.
+4. Bot akan mengendalikan browser (*UI Automation*) dan memproses dokumen hingga selesai. Data dokumen yang sukses akan dicatat di `upload_history.json`.
 
 ---
 
-### 3. Mengunduh Dokumen yang Selesai di-TTE (Batch Download)
+### 3. Membatalkan Dokumen yang Salah (Batch Cancel)
+Jika Anda menyadari ada kesalahan setelah dokumen terunggah:
+1. Dobel-klik [**`JALANKAN_BATALKAN_TTE.bat`**](JALANKAN_BATALKAN_TTE.bat).
+2. Script ini akan membaca `upload_history.json` sebagai daftar target.
+3. Anda bisa memilih opsi tes (1 dokumen) atau batal massal. 
+4. Fitur ini menggunakan jalur API Murni, sangat cepat (bisa membatalkan ratusan naskah hanya dalam puluhan detik).
+5. Dokumen yang sukses dibatalkan akan dihapus otomatis dari file `upload_history.json`.
+
+---
+
+### 4. Sapu Bersih (Batch Permanent Deleter)
+Untuk membuang dokumen dari keranjang "Dokumen Dibatalkan":
+1. Dobel-klik [**`JALANKAN_HAPUS_PERMANEN_TTE.bat`**](JALANKAN_HAPUS_PERMANEN_TTE.bat).
+2. Bot akan mengambil **seluruh daftar dokumen** di keranjang sampah server.
+3. Bot akan menampilkan tabel daftarnya di layar terminal dan menyimpannya ke `daftar_dokumen_dibatalkan.csv`.
+4. Anda diberi opsi konfirmasi sebelum sistem menghapus bersih naskah tersebut secara permanen.
+
+---
+
+### 5. Mengunduh Dokumen FINAL (Batch Download)
+Jika Pejabat telah menyetujui (memaraf/menandatangani) dokumen:
 1. Dobel-klik [**`JALANKAN_DOWNLOAD_TTE.bat`**](JALANKAN_DOWNLOAD_TTE.bat).
-2. Anda akan disajikan opsi:
-   - **Jumlah File**: Pilih tes beberapa file atau seluruh antrean.
-   - **Struktur Folder**: Simpan langsung di 1 folder utama atau pisahkan ke subfolder kategori.
-   - **Tampilan**: Pilih Mode Senyap atau Visual.
-   - **Kata Sandi**: Masukkan kata sandi akun TTE Anda.
-3. Bot akan memeriksa katalog dokumen di portal TTE. Dokumen yang berstatus **`FINAL`** akan langsung diunduh secara cepat dan disimpan rapi ke folder [**`HASIL_DOWNLOAD_TTE/`**](HASIL_DOWNLOAD_TTE/).
+2. Pilih apakah Anda ingin struktur folder dipertahankan (Subfolder) atau ditumpuk di 1 folder utama.
+3. Bot akan memeriksa katalog portal TTE dengan kecepatan tinggi, mencari yang berstatus **`FINAL`**, lalu mengunduhnya secara paralel langsung ke folder [**`HASIL_DOWNLOAD_TTE/`**](HASIL_DOWNLOAD_TTE/).
 
 ---
 
-## ⚙️ Kustomisasi via `config.json`
+## ⚙️ Kustomisasi `config.json`
 
-Anda dapat mengatur default akun dan pejabat di file `config.json`:
+File konfigurasi ini mengatur pejabat standar (*default*) agar Anda tidak perlu mengetik manual tiap saat:
 
 ```json
 {
@@ -105,22 +127,22 @@ Anda dapat mengatur default akun dan pejabat di file `config.json`:
   ]
 }
 ```
-> *Catatan Pejabat:*
-> - *Pemaraf bersifat opsional. Atur `"pemaraf": null` di `config.json` atau ketik `-` / `skip` di terminal jika dokumen tidak memerlukan pemaraf.*
-> - *Satu penandatangan bisa memiliki lebih dari 1 anchor sekaligus (misal `["#", "$"]` atau `"#,$"`). Bot akan otomatis mencentang semua anchor tersebut dalam satu kali klik di portal TTE.*
+> **Catatan:**
+> - Set `"pemaraf": null` jika tidak butuh pemaraf.
+> - Multi-anchor (misal `["#", "$"]`) akan dicentang sekaligus oleh sistem untuk satu penandatangan.
 
 ---
 
-## ❓ FAQ & Troubleshooting
+## ❓ FAQ (Tanya Jawab)
 
-- **Q: Apakah aman jika proses dihentikan di tengah jalan?**  
-  **A**: Sangat aman. Setiap surat yang sukses langsung dicatat di `upload_history.json` / `download_history.json`. Saat dijalankan kembali, surat yang sudah ada otomatis dilewati.
-- **Q: Bagaimana jika ada file yang belum FINAL saat proses download?**  
-  **A**: Bot akan memberikan status `[BELUM FINAL]` (misal: *Menunggu Paraf*) dan melewatinya. Anda bisa menjalankan downloader kembali di lain hari untuk mengambil sisa file yang sudah selesai ditandatangani.
-- **Q: Apakah kata sandi tersimpan di komputer?**  
-  **A**: Tidak. Kata sandi diminta langsung secara interaktif saat menjalankan bot dan tidak disimpan ke file demi menjaga privasi dan keamanan akun.
+- **Q: Apakah aman mematikan program di tengah jalan (Cancel/Upload)?**  
+  **A**: Sangat aman. Sistem riwayat (*history tracker*) mencatat setiap file per detiknya. Saat Anda jalankan ulang, ia otomatis melanjutkan sisanya (Resume).
+
+- **Q: Apa fungsi file Inspector (`inspeksi_*.py`)?**  
+  **A**: Script tersebut adalah alat sadap jaringan (*Network & API Interceptor*). Berguna bagi developer/programmer yang ingin belajar bagaimana sistem portal TTE Kemenag saling bertukar data di belakang layar tanpa harus membongkar *source code* website mereka. 
+
+- **Q: Bagaimana jika dokumen ditolak (*Rejected*) oleh pejabat?**  
+  **A**: Anda bisa menggunakan fitur Batalkan atau hapus manual di web, lalu unggah perbaikan dokumennya seperti biasa.
 
 ---
-
-## 📜 Lisensi & Penggunaan
-Aplikasi ini dikembangkan untuk mempermudah dan mempercepat tugas administratif naskah dinas elektronik di lingkungan Kementerian Agama. Gunakan dengan bijak dan sesuai dengan ketentuan instansi.
+*Dibuat untuk mempermudah dan mengotomatisasi administrasi naskah digital secara efisien & pintar.* 🚀
