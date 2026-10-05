@@ -1,7 +1,9 @@
 {
   "email": "198906212022031002@kemenag.go.id",
   "jenis_dokumen": "Dokumen Lain-Lain",
-  "pemaraf": null,
+  "pemaraf": {
+    "nama": "tamrin lodo"
+  },
   "penandatangan": [
     {
       "nama": "usman senong",
